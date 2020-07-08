@@ -49,6 +49,7 @@ I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
@@ -65,6 +66,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -80,9 +82,9 @@ int16_t Mag_AdX, Mag_AdY, Mag_AdZ;
 int8_t ASAX, ASAY, ASAZ;  //sensitivity adjustment values
 ///모터 ???????????
 int flag=0;
-float avg_Roll=0;
-float avg_Pictch =0;
-float temp_gap, temp_gap2;
+float taget_Roll = 0;
+float taget_Pitch = -2;
+float PID_Roll, PID_Pitch;
 #define PI      3.1415926535
 #define ANGLE   0.1428572
 #define delay_ms     HAL_Delay
@@ -90,19 +92,21 @@ float temp_gap, temp_gap2;
 #define SYSTICK_LOAD 71999
 #define millis()     HAL_GetTick()
 extern __IO uint32_t uwTick;
-float Duty_Rate[360] = {0.00};                               // ?  ?   ???????????   ?????????? 배열 ?  ?  .
-int postion[7] = {0};
-int pos = 0;
+float Duty_Rate_Roll[360] = {0.00};
+float Duty_Rate_Pitch[360] = {0.00};
 int chan1_1 = 0, chan1_2 = 120, chan1_3 = 240;
 int chan2_1 = 0, chan2_2 = 120, chan2_3 = 240;
 
 void motor_control(float Roll,float Pitch);
 void motor1_Angle(int dir);
 void motor2_Angle(int dir);
+float get_init_angle();
+float FUNC_PID_Roll();
+float FUNC_PID_Pitch();
 ///모터 ???????????  ?
 float Ac_X1, Ac_Y1, Ac_Z1, Gy_X1, Gy_Y1, Gy_Z1, Mg_X1, Mg_Y1, Mg_Z1, Mag_X0, Mag_Y0, Mag_Z0;
 float Ac_X2, Ac_Y2, Ac_Z2, Bias_Gy_X, Bias_Gy_Y, Bias_Gy_Z, Bias_Ac_X, Bias_Ac_Y, Bias_Ac_Z, Offset_Mag_X, Offset_Mag_Y, Offset_Mag_Z;
-float Deg_AX, Deg_AY, Deg_AZ, Deg_GX, Deg_GY, Deg_GZ, Deg_XC, Deg_YC, Deg_ZC, Roll, Pitch, Yaw;
+float Deg_AX, Deg_AY, Deg_AZ, Deg_GX, Deg_GY, Deg_GZ, Deg_XC, Deg_YC, Deg_ZC, Roll, Pitch, Yaw, mag_scale_X, mag_scale_Y, mag_scale_Z;
 float now_Roll=0, now_Pitch=0, Roll_gap,Pitch_gap;// ????????????  ?   측정?
 float dt, alpha, beta, Max_X, Max_Y, Max_Z, Min_X, Min_Y, Min_Z;
 float Yaw_G, Yaw_M;
@@ -128,7 +132,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void MPU9250_Calibration();
 void AK8963_Offset();
 void Sensor_Calculate();
-float get_init_angle();
 void MakeVelProfile(float maxVel, float accel);
 /*--------------------------------------------------------------------------------*/
 //printf
@@ -194,8 +197,9 @@ void init_MPU9250(void)
    MPU9250_Write_bits(MPU9250_RA_PWR_MGMT_1, MPU9250_PWR1_CLKSEL_BIT, MPU9250_PWR1_CLKSEL_LENGTH, MPU9250_CLOCK_INTERNAL);
    ///gyro set 250d/s
    MPU9250_Write_bits(MPU9250_RA_GYRO_CONFIG, MPU9250_GCONFIG_FS_SEL_BIT, MPU9250_GCONFIG_FS_SEL_LENGTH, MPU9250_GYRO_FS_250);
-   ///
+   ///acc set
    MPU9250_Write_bits(MPU9250_RA_ACCEL_CONFIG, MPU9250_ACONFIG_AFS_SEL_BIT, MPU9250_ACONFIG_AFS_SEL_LENGTH, MPU9250_ACCEL_FS_2);
+   ///ACC DLPF
    MPU9250_Write_bits(MPU9250_ACCEL_DLPF_CONFIG, MPU9250_ACCEL_DLPF_BIT, MPU9250_ACCEL_DLPF_LENGTH, MPU9250_ACCEL_DLPF_VALUE);
 }
 ///
@@ -263,11 +267,6 @@ void read_AK8963_data(void)
    ASAY = (AK8963_Read(0x11));
    ASAZ = (AK8963_Read(0x12));
 }
-void calc_angle_gap(void){
-   Pitch_gap=Pitch-now_Pitch;
-   Roll_gap=Roll-now_Roll;
-}
-
 
 void MPU9250_Calibration()
 {
@@ -321,66 +320,70 @@ void AK8963_Offset()
 
    printf("---------------------------------------------------------------------------------- \r\n");
 }
-float get_init_angle(){
+float get_init_angle()
+{
    float temp_array[100];
-   float avg_roll=0;
-   for (int i=0;i<100;i++){
+   float taget_Roll=0;
+   for (int i=0;i<100;i++)
+   {
       temp_array[i]=Roll;
    }
-   for(int j=0;j<100;j++){
-      avg_roll+=temp_array[j];
+   for(int j=0;j<100;j++)
+   {
+      taget_Roll+=temp_array[j];
    }
-   return avg_roll;
+   return taget_Roll;
 }
 #define BIN2GYR 131.072
 #define BIN2MAG 0.15
 #define BIN2ACC 16384.0
 void Sensor_Calculate()
 {
-   Bias_Gy_X = -83.3693; Bias_Gy_Y = 221.402; Bias_Gy_Z = -180.1906;
-      //Offset_Mag_X = 250;   Offset_Mag_Y = 85; Offset_Mag_Z = 320;
-      //mag_scale_X = 334.6 * BIN2MAG; mag_scale_Y = 270.0 * BIN2MAG; mag_scale_Z = 340.0 * BIN2MAG;
-     // ASAX = 175, ASAY = 176, ASAZ = 92;
-     // Mag_AdX = 1.18, Mag_AdY = 1.19, Mag_AdX = 0.86;
-      dt = 0.01, alpha = 0.96, beta = 0.92;
+   //Bias_Gy_X = -83.3693; Bias_Gy_Y = 221.402; Bias_Gy_Z = -180.1906;
+   Bias_Gy_X = 0.0; Bias_Gy_Y = 0.0; Bias_Gy_Z = 0.0;
+   Offset_Mag_X = 250;   Offset_Mag_Y = 85; Offset_Mag_Z = 320;
+   mag_scale_X = 334.6 * BIN2MAG; mag_scale_Y = 270.0 * BIN2MAG; mag_scale_Z = 340.0 * BIN2MAG;
+   ASAX = 175, ASAY = 176, ASAZ = 92;
+   Mag_AdX = 1.18, Mag_AdY = 1.19, Mag_AdX = 0.86;
+   dt = 0.01, alpha = 0.92, beta =0.94;
 
-      /* correction Mag_Raw_Data */
-     // Mag_X0 = ((float)(Mag_X * BIN2MAG * Mag_AdX)) - ((float)(Offset_Mag_X * BIN2MAG * Mag_AdX));
-     // Mag_Y0 = ((float)(Mag_Y * BIN2MAG * Mag_AdY)) - ((float)(Offset_Mag_Y * BIN2MAG * Mag_AdY));
-      //Mag_Z0 = ((float)(Mag_Z * BIN2MAG * Mag_AdZ)) - ((float)(Offset_Mag_Z * BIN2MAG * Mag_AdZ));
+   /* correction Mag_Raw_Data */
+   Mag_X0 = ((float)(Mag_X * BIN2MAG * Mag_AdX)) - ((float)(Offset_Mag_X * BIN2MAG * Mag_AdX));
+   Mag_Y0 = ((float)(Mag_Y * BIN2MAG * Mag_AdY)) - ((float)(Offset_Mag_Y * BIN2MAG * Mag_AdY));
+   Mag_Z0 = ((float)(Mag_Z * BIN2MAG * Mag_AdZ)) - ((float)(Offset_Mag_Z * BIN2MAG * Mag_AdZ));
 
-      //Mg_X1 = Mag_X0 / mag_scale_X;
-     /// Mg_Y1 = Mag_Y0 / mag_scale_Y;
-      //Mg_Z1 = Mag_Z0 / mag_scale_Z;
+   Mg_X1 = Mag_X0 / mag_scale_X;
+   Mg_Y1 = Mag_Y0 / mag_scale_Y;
+   Mg_Z1 = Mag_Z0 / mag_scale_Z;
 
-      /*  Acc: g, Gyr: °/s, Mag: µT  */
-      Ac_X1 = ((float)Accel_X) / BIN2ACC;
-      Ac_Y1 = ((float)Accel_Y) / BIN2ACC;
-      Ac_Z1 = ((float)Accel_Z) / BIN2ACC;
-      Gy_X1 = ((float)Gyro_X - Bias_Gy_X) / BIN2GYR;
-      Gy_Y1 = ((float)Gyro_Y - Bias_Gy_Y) / BIN2GYR;
-      Gy_Z1 = ((float)Gyro_Z - Bias_Gy_Z) / BIN2GYR;
+   /*  Acc: g, Gyr: °/s, Mag: µT  */
+   Ac_X1 = ((float)Accel_X) / BIN2ACC;
+   Ac_Y1 = ((float)Accel_Y) / BIN2ACC;
+   Ac_Z1 = ((float)Accel_Z) / BIN2ACC;
+   Gy_X1 = ((float)Gyro_X - Bias_Gy_X) / BIN2GYR;
+   Gy_Y1 = ((float)Gyro_Y - Bias_Gy_Y) / BIN2GYR;
+   Gy_Z1 = ((float)Gyro_Z - Bias_Gy_Z) / BIN2GYR;
 
 
-      /* Acc Angle */
-      Deg_AX = atan(Ac_Y1 / sqrt(pow(Ac_X1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
-      Deg_AY = atan(-1 * Ac_X1 / sqrt(pow(Ac_Y1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
-      Deg_AZ = atan(sqrt(pow(Ac_X1, 2) + pow(Ac_Y1, 2)) / Ac_Z1) * RAD2DEG; // no meaning
+   /* Acc Angle */
+   Deg_AX = atan(Ac_Y1 / sqrt(pow(Ac_X1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
+   Deg_AY = atan(-1 * Ac_X1 / sqrt(pow(Ac_Y1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
+   Deg_AZ = atan(sqrt(pow(Ac_X1, 2) + pow(Ac_Y1, 2)) / Ac_Z1) * RAD2DEG; // no meaning
 
-      /* Gyro Angle */
-      Deg_GX = Roll + Gy_X1 * dt;
-      Deg_GY = Pitch + Gy_Y1 * dt;
-      Deg_GZ = Yaw + Gy_Z1 * dt;
+   /* Gyro Angle */
+   Deg_GX = Roll + Gy_X1 * dt;
+   Deg_GY = Pitch + Gy_Y1 * dt;
+   Deg_GZ = Yaw + Gy_Z1 * dt;
 
-      /* Roll, Pitch, Yaw Complementary filter */
-     // Xm =  (-Mg_Y1 * cos(Roll * DEG2RAD) + Mg_Z1 * sin(Roll * DEG2RAD));
-     // Ym =  (Mg_X1 * cos(Pitch * DEG2RAD) + Mg_Y1 * sin(Pitch * DEG2RAD) * sin(Roll * DEG2RAD) + Mg_Z1 * sin(Pitch * DEG2RAD) * cos(Roll * DEG2RAD));
-      //Yaw_M = RAD2DEG * atan2(Xm, Ym);  //atan2(분자, 분모)
-      //Yaw_G = Deg_GZ;
+   /* Roll, Pitch, Yaw Complementary filter */
+   Xm =  (-Mg_Y1 * cos(Roll * DEG2RAD) + Mg_Z1 * sin(Roll * DEG2RAD));
+   Ym =  (Mg_X1 * cos(Pitch * DEG2RAD) + Mg_Y1 * sin(Pitch * DEG2RAD) * sin(Roll * DEG2RAD) + Mg_Z1 * sin(Pitch * DEG2RAD) * cos(Roll * DEG2RAD));
+   Yaw_M = RAD2DEG * atan2(Xm, Ym);  //atan2(분자, 분모)
+   Yaw_G = Deg_GZ;
 
-      Roll = alpha * Deg_GX + (1 - alpha) * Deg_AX;
-      Pitch = alpha * Deg_GY + (1 - alpha) * Deg_AY;
-      //Yaw = beta * Yaw_G + (1 - beta) * Yaw_M;
+   Roll = alpha * Deg_GX + (1 - alpha) * Deg_AX;
+   Pitch = alpha * Deg_GY + (1 - alpha) * Deg_AY;
+   Yaw = beta * Yaw_G + (1 - beta) * Yaw_M;
 }
 ////motor start
 uint32_t micros() {
@@ -406,204 +409,46 @@ void delay_us(uint32_t us) {
   }
 }
 
-/*
-float Delay_array[360] = {0,};
-void MakeVelProfile(float maxVel, float accel)
-
+#define num1    1
+#define num2   1
+#define Time    100
+void motor_control(float roll, float pitch)
 {
+    unsigned int step_Roll  = fabs( roll  / (num1 * ANGLE) ) + 0.5;
+    unsigned int step_Pitch = fabs( pitch / (num2 * ANGLE) ) + 0.5;
+    unsigned int cnt_Roll = 0, cnt_Pitch = 0;
+    int dir_Roll = 0, dir_Pitch = 0;
+    int max_step = 0;
 
-      //MakeVelProfile(100,1000);
-   int k;
-   unsigned int MAX_step;
-   MAX_step = ceil((maxVel * maxVel) / (ANGLE * 2 * accel));
-   for(k=0; k < MAX_step; k++)
-   {
-      Delay_array[k] = sqrt( ANGLE / (2 * accel * (k+1)));
-   }
-}
-*/
-#define num1 3
-#define num2 3
-#define Time 2000
-void motor_control(float roll,float pitch)
-{
-    unsigned int step_Roll  = abs( roll  / (num1*ANGLE)) + 0.5;
-    unsigned int step_Pitch = abs( pitch / (num2*ANGLE)) + 0.5;
-    unsigned int cnt_Roll = 0, cnt_Pitch =0;
-    int dir_Roll,dir_Pitch;
-    int max_step=0;
+    if(roll >= 0) dir_Roll = 1;    else dir_Roll = 0;
+    if(pitch >= 0) dir_Pitch = 1;    else dir_Pitch = 0;
+    if(step_Roll >= step_Pitch) max_step = step_Roll;    else max_step = step_Pitch;
 
-    if(roll>=0) dir_Roll=1;
-    else dir_Roll=0;
-    if(pitch>=0)dir_Pitch=1;
-    else dir_Pitch=0;
-
-    if (step_Roll>=step_Pitch) max_step=step_Roll;
-    else max_step=step_Pitch;
-
-    for(int i=0; i<max_step; i++)
+    for(int i = 0; i < max_step; i++)
     {
-       if(step_Roll>cnt_Roll)
-       {
-          motor1_Angle(dir_Roll);
-          cnt_Roll++;
-       }
-       if(step_Pitch>cnt_Pitch)
+       if(step_Pitch > cnt_Pitch)
        {
           motor2_Angle(dir_Pitch);
           cnt_Pitch++;
        }
-       delay_us(Time);
-    }
 
-}
-/*
-int Cal_step1(float angle){
-
-   unsigned int step_number1 = abs( angle / (num*ANGLE)) +0.5;
-   if(angle>=0){motor_dir1 = 1;}
-   else{motor_dir1 = 0;}
-   return step_number1;
-
-}
-
-int Cal_step2(float angle){
-
-   unsigned int step_number2 = abs( angle / (num*ANGLE)) +0.5;
-   if(angle>=0){motor_dir2 = 1;}
-   else{motor_dir2 = 0;}
-   return step_number2;
-
-}
-
-void motor_move_dir(int dir){
-
-
-   if(dir == 1){
-             chan_1 = chan_1 + num;
-               chan_2 = chan_2 + num;
-               chan_3 = chan_3 + num;
-
-               if(chan_1 >= 360 ) {chan_1 = 0;}
-               if(chan_2 >= 360 ) {chan_2 = 0;}
-               if(chan_3 >= 360 ) {chan_3 = 0;}
-
-   }
-
-   else if(dir == 0){
-
-             chan_1 = chan_1 - num;
-               chan_2 = chan_2 - num;
-               chan_3 = chan_3 - num;
-
-               if(chan_1 <= 0 ) {chan_1 = 360;}
-               if(chan_2 <= 0 ) {chan_2 = 360;}
-               if(chan_3 <= 0 ) {chan_3 = 360;}
-
-   }
-
-
-}
-
-
-void motor_Angle(float angle1, float angle2){
-
-   unsigned int step_number1 = abs( angle1 / (num*ANGLE)) +0.5;
-   unsigned int step_number2 = abs( angle2 / (num*ANGLE)) +0.5;
-   int big_step = 0 , small_step = 0;
-   int cnt1 = 0, cnt2 = 0, big_cnt = 0;
-
-   if(step_number1>= step_number2){ big_step = step_number1; small_step = step_number2; }
-   else{ big_step = step_number2; small_step = step_number1; }
-
-   while(!(big_cnt>= big_step)){
-
-      if(angle1>0 && cnt1<=big_step){
-
-            htim1.Instance -> CCR1 = Duty_Rate[chan_1];
-            htim1.Instance -> CCR2 = Duty_Rate[chan_2];
-            htim1.Instance -> CCR3 = Duty_Rate[chan_3];
-
-
-            chan_1 = chan_1 + num;
-            chan_2 = chan_2 + num;
-            chan_3 = chan_3 + num;
-
-            if(chan_1 >= 360 ) {chan_1 = 0;}
-            if(chan_2 >= 360 ) {chan_2 = 0;}
-            if(chan_3 >= 360 ) {chan_3 = 0;}
-
-            cnt1++;
+       if(step_Roll > cnt_Roll)
+       {
+          motor1_Angle(dir_Roll);
+          cnt_Roll++;
        }
-      else if(angle1<0)                                          // ?  방향
-            {
-               htim1.Instance -> CCR1 = Duty_Rate[chan_1];
-               htim1.Instance -> CCR2 = Duty_Rate[chan_2];
-               htim1.Instance -> CCR3 = Duty_Rate[chan_3];
+    }
+    // delay_us(Time);
 
-
-               chan_1 = chan_1 - num;
-               chan_2 = chan_2 - num;
-               chan_3 = chan_3 - num;
-
-               if(chan_1 <= 0 ) {chan_1 = 360;}
-               if(chan_2 <= 0 ) {chan_2 = 360;}
-               if(chan_3 <= 0 ) {chan_3 = 360;}
-
-               cnt1++;
-            }
-        if(angle2>0)            // ?  방향
-            {
-               htim2.Instance -> CCR1 = Duty_Rate[chan_1];
-               htim2.Instance -> CCR2 = Duty_Rate[chan_2];
-               htim2.Instance -> CCR3 = Duty_Rate[chan_3];
-
-
-               chan_1 = chan_1 + 1;
-               chan_2 = chan_2 + 1;
-               chan_3 = chan_3 + 1;
-
-               if(chan_1 >= 360 ) {chan_1 = 0;}
-               if(chan_2 >= 360 ) {chan_2 = 0;}
-               if(chan_3 >= 360 ) {chan_3 = 0;}
-
-               cnt2++;
-            }
-          else if(angle2<0)      // ?  방향
-            {
-               htim2.Instance -> CCR1 = Duty_Rate[chan_1];
-               htim2.Instance -> CCR2 = Duty_Rate[chan_2];
-               htim2.Instance -> CCR3 = Duty_Rate[chan_3];
-
-
-               chan_1 = chan_1 - 1;
-               chan_2 = chan_2 - 1;
-               chan_3 = chan_3 - 1;
-
-               if(chan_1 <= 0 ) {chan_1 = 360;}
-               if(chan_2 <= 0 ) {chan_2 = 360;}
-               if(chan_3 <= 0 ) {chan_3 = 360;}
-
-               cnt2++;
-            }
-         }
-
-
-
-       delay_us(Time);
-      big_cnt++;
-   }
-*/
-
+}
 
 void motor1_Angle(int dir)                                      // motor angle control
 {
      if(dir == 1)                                               // ?  방향
      {
-         htim1.Instance -> CCR1 = Duty_Rate[chan1_1];
-         htim1.Instance -> CCR2 = Duty_Rate[chan1_2];
-         htim1.Instance -> CCR3 = Duty_Rate[chan1_3];
-
+         htim1.Instance -> CCR1 = Duty_Rate_Roll[chan1_1];
+         htim1.Instance -> CCR2 = Duty_Rate_Roll[chan1_2];
+         htim1.Instance -> CCR3 = Duty_Rate_Roll[chan1_3];
 
          chan1_1 = chan1_1 + num1;
          chan1_2 = chan1_2 + num1;
@@ -612,36 +457,31 @@ void motor1_Angle(int dir)                                      // motor angle c
          if(chan1_1 >= 360 ) {chan1_1 = 0;}
          if(chan1_2 >= 360 ) {chan1_2 = 0;}
          if(chan1_3 >= 360 ) {chan1_3 = 0;}
-
       }
+
       else if(dir == 0)                                          // ?  방향
       {
-         htim1.Instance -> CCR1 = Duty_Rate[chan1_1];
-         htim1.Instance -> CCR2 = Duty_Rate[chan1_2];
-         htim1.Instance -> CCR3 = Duty_Rate[chan1_3];
-
+         htim1.Instance -> CCR1 = Duty_Rate_Roll[chan1_1];
+         htim1.Instance -> CCR2 = Duty_Rate_Roll[chan1_2];
+         htim1.Instance -> CCR3 = Duty_Rate_Roll[chan1_3];
 
          chan1_1 = chan1_1 - num1;
          chan1_2 = chan1_2 - num1;
          chan1_3 = chan1_3 - num1;
 
-         if(chan1_1 <= 0 ) {chan1_1 = 360;}
-         if(chan1_2 <= 0 ) {chan1_2 = 360;}
-         if(chan1_3 <= 0 ) {chan1_3 = 360;}
-
+         if(chan1_1 < 0 ) {chan1_1 = 359;}
+         if(chan1_2 < 0 ) {chan1_2 = 359;}
+         if(chan1_3 < 0 ) {chan1_3 = 359;}
       }
-
 }
 
 void motor2_Angle(int dir)                                      // motor angle control
 {
-
-      if(dir==1)            // ?  방향
+      if(dir == 1)
       {
-         htim2.Instance -> CCR1 = Duty_Rate[chan2_1];
-         htim2.Instance -> CCR2 = Duty_Rate[chan2_2];
-         htim2.Instance -> CCR3 = Duty_Rate[chan2_3];
-
+         htim2.Instance -> CCR1 = Duty_Rate_Pitch[chan2_1];
+         htim2.Instance -> CCR2 = Duty_Rate_Pitch[chan2_2];
+         htim2.Instance -> CCR3 = Duty_Rate_Pitch[chan2_3];
 
          chan2_1 = chan2_1 + num2;
          chan2_2 = chan2_2 + num2;
@@ -650,98 +490,81 @@ void motor2_Angle(int dir)                                      // motor angle c
          if(chan2_1 >= 360 ) {chan2_1 = 0;}
          if(chan2_2 >= 360 ) {chan2_2 = 0;}
          if(chan2_3 >= 360 ) {chan2_3 = 0;}
-
-
       }
-      else if(dir==0)      // ?  방향
-      {
-         htim2.Instance -> CCR1 = Duty_Rate[chan2_1];
-         htim2.Instance -> CCR2 = Duty_Rate[chan2_2];
-         htim2.Instance -> CCR3 = Duty_Rate[chan2_3];
 
+      else if(dir == 0)
+      {
+         htim2.Instance -> CCR1 = Duty_Rate_Pitch[chan2_1];
+         htim2.Instance -> CCR2 = Duty_Rate_Pitch[chan2_2];
+         htim2.Instance -> CCR3 = Duty_Rate_Pitch[chan2_3];
 
          chan2_1 = chan2_1 - num2;
          chan2_2 = chan2_2 - num2;
          chan2_3 = chan2_3 - num2;
 
-         if(chan2_1 <= 0 ) {chan2_1 = 360;}
-         if(chan2_2 <= 0 ) {chan2_2 = 360;}
-         if(chan2_3 <= 0 ) {chan2_3 = 360;}
-
+         if(chan2_1 < 0 ) {chan2_1 = 359;}
+         if(chan2_2 < 0 ) {chan2_2 = 359;}
+         if(chan2_3 < 0 ) {chan2_3 = 359;}
       }
-
 }
 
 
 
-#define Kp_r   1.0
-#define Ki_r   0.01
-#define Kd_r   0.02
-float PrevError_C = 0;
+float PrevError_C = 0, PrevError_C2 = 0;
 float Error_Sum = 0, Error_Sum2 = 0;
 float dt = 0.01;
-float Output =0 , Error = 0, Error2 = 0;
+float Output = 0, Output2 = 0, Error = 0, Error2 = 0;
 float P_term = 0, I_term = 0, D_term = 0;
 float P_term2 = 0, I_term2 = 0, D_term2 = 0;
 
-float DoFullPID1()
+#define Kp_r   0.30
+#define Ki_r   0.00
+#define Kd_r   0.005
+float FUNC_PID_Roll()
 {
+   Error = taget_Roll - Roll;  Error_Sum += Error * dt;
 
+   P_term = Kp_r * Error;
+   I_term = Ki_r * Error_Sum;
+   D_term = Kd_r * ((Error - PrevError_C)/dt);
 
-  Error = avg_Roll - Roll;  Error_Sum += Error*dt;
-  //if( Error > -5 && Error < 5 )
+   Output = P_term + I_term + D_term;
+   PrevError_C = Error;
 
-  P_term = Kp_r * Error;
-  I_term = Ki_r * Error_Sum;
-  D_term = Kd_r * ((Error - PrevError_C)/dt);
-
-  Output = P_term + I_term + D_term;
-  if (abs(Output)>5) Output=5;
-  PrevError_C = Error;
-
-  return (Output);
+   return (Output);
 }
 
 
-#define Kp_p   1.00
-#define Ki_p   1.00
-#define Kd_p   0.05
-
-float avg_Pitch = 0;
-float Prev_input2 = 0;
-float Output2 = 0;
-float dInput;
-float DoFullPID2()
+#define Kp_p     0.2   //0.30
+#define Ki_p   0.00
+#define Kd_p    0.02  //0.045
+float FUNC_PID_Pitch() //negative feedback system
 {
+   Error2 = -(taget_Pitch - Pitch);  Error_Sum2 += Error2 * dt;
+   //Error2 = - Pitch;  Error_Sum2 += Error2 * dt;
 
-  Error2 = avg_Pitch - Pitch;  //Error_Sum2 += Error2*dt;
-  dInput= Pitch-Prev_input2;
-  Prev_input2= Pitch;
-  P_term2 = Kp_p * Error2;
-  I_term2 += Ki_p * Error2 * dt;
-  D_term2 = -Kd_p * dInput / dt;
+   P_term2 = Kp_p * Error2;
+   I_term2 = Ki_p * Error_Sum2;
+   D_term2 = Kd_p * ((Error2 - PrevError_C2) / dt);
 
-  Output2 = P_term2 + I_term2 + D_term2;
+   Output2 = P_term2 + I_term2 + D_term2;
+   PrevError_C2 = Error2;
 
-  return (Output2);
+   return (Output2);
 }
 
 ////motor end
 //ISP_func
+
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) ///new
 {
-   if(htim->Instance == TIM4)
+   if (htim->Instance == TIM4)
    {
-      flag = 0;
-      //HAL_GPIO_WritePin(GPIOB,GPIO_PIN_14, GPIO_PIN_SET);
-      //read_AK8963_data();
       read_MPU9250_data();
+      read_AK8963_data();
       Sensor_Calculate();
-      temp_gap = DoFullPID1();
-      temp_gap2 = DoFullPID2();
-      //printf("%5.2f\r\n",temp_gap);
-      //HAL_GPIO_WritePin(GPIOB,GPIO_PIN_14, GPIO_PIN_RESET);
-      flag = 1;
+      flag += 1;
    }
 }
 
@@ -754,11 +577,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) ///new
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-   float si;
-   for(int i = 0; i <360; i++)
+
+   for(int i = 0; i < 360; i++)
    {
-       si = 180 + 180*sin((2*PI*i)/360);
-       Duty_Rate[i] = si;
+      Duty_Rate_Roll[i] = 180 + 180 * sin((2*PI*i)/360);  //50 +- 50 %
+      Duty_Rate_Pitch[i] = 180 + 180 * sin((2*PI*i)/360);  //50 +- 50 %
    }
 
   /* USER CODE END 1 */
@@ -786,6 +609,7 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);          // motor1
@@ -795,27 +619,35 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);          // motor2
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
+
   init_MPU9250();
-  //init_AK8963();
+  init_AK8963();
   //MPU9250_Calibration();
   //AK8963_Offset();
   HAL_TIM_Base_Start_IT(&htim4);///Timer On
-  void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim); //Timer Function --> don't hal_delay
-
+  //void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim); //Timer Function --> don't hal_delay
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-     while(flag == 1)
+     /* Print for Roll Pitch Yaw */
+     //printf("Roll: %5.2f   /  Pitch: %5.2f   /  Yaw: %5.2f \r\n", Roll, Pitch, Yaw);
+     printf("%5.2f / %5.2f / %5.2f \r\n", Roll, Pitch, Yaw); //for HyperTerminal
+     //printf("YPR,%5.2f,%5.2f,%5.2f\r\n", Yaw, Pitch, Roll); //for Processing
+     //printf("------------------------------------------------------------\r\n");
+
+     if (flag > 50)
      {
-//    	if (abs(temp_gap)<5 && abs(temp_gap2)<5) motor_control(0,0);
-//    	else
-    	motor_control(temp_gap,temp_gap2);
-        //printf("%5.2f, %5.2f\r\n",temp_gap , temp_gap2);
+        /* Print for Roll Pitch Yaw */
+        //printf("Roll: %5.2f   /  Pitch: %5.2f   /  Yaw: %5.2f \r\n", Roll, Pitch, Yaw);
+        //printf("%5.2f/%5.2f/%5.2f \r\n", Roll, Pitch, Yaw); //for HyperTerminal
+        //printf("YPR,%5.2f,%5.2f,%5.2f\r\n", Yaw, Pitch, Roll); //for Processing
+        //printf("------------------------------------------------------------\r\n");
         flag = 0;
      }
+
 
 
     /* USER CODE END WHILE */
@@ -824,7 +656,6 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
-
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -1023,6 +854,63 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 2 */
   HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 20-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 360-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
