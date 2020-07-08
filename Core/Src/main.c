@@ -83,7 +83,7 @@ int8_t ASAX, ASAY, ASAZ;  //sensitivity adjustment values
 ///모터 ???????????
 int flag=0;
 float taget_Roll = 0;
-float taget_Pitch = -2;
+float taget_Pitch = 0;
 float PID_Roll, PID_Pitch;
 #define PI      3.1415926535
 #define ANGLE   0.1428572
@@ -106,7 +106,7 @@ float FUNC_PID_Pitch();
 ///모터 ???????????  ?
 float Ac_X1, Ac_Y1, Ac_Z1, Gy_X1, Gy_Y1, Gy_Z1, Mg_X1, Mg_Y1, Mg_Z1, Mag_X0, Mag_Y0, Mag_Z0;
 float Ac_X2, Ac_Y2, Ac_Z2, Bias_Gy_X, Bias_Gy_Y, Bias_Gy_Z, Bias_Ac_X, Bias_Ac_Y, Bias_Ac_Z, Offset_Mag_X, Offset_Mag_Y, Offset_Mag_Z;
-float Deg_AX, Deg_AY, Deg_AZ, Deg_GX, Deg_GY, Deg_GZ, Deg_XC, Deg_YC, Deg_ZC, Roll, Pitch, Yaw, mag_scale_X, mag_scale_Y, mag_scale_Z;
+float Deg_AX, Deg_AY, Deg_AZ, Deg_GX, Deg_GY, Deg_GZ, Deg_XC, Deg_YC, Deg_ZC, Roll, Pitch, Yaw;
 float now_Roll=0, now_Pitch=0, Roll_gap,Pitch_gap;// ????????????  ?   측정?
 float dt, alpha, beta, Max_X, Max_Y, Max_Z, Min_X, Min_Y, Min_Z;
 float Yaw_G, Yaw_M;
@@ -339,51 +339,51 @@ float get_init_angle()
 #define BIN2ACC 16384.0
 void Sensor_Calculate()
 {
-   //Bias_Gy_X = -83.3693; Bias_Gy_Y = 221.402; Bias_Gy_Z = -180.1906;
-   Bias_Gy_X = 0.0; Bias_Gy_Y = 0.0; Bias_Gy_Z = 0.0;
-   Offset_Mag_X = 250;   Offset_Mag_Y = 85; Offset_Mag_Z = 320;
-   mag_scale_X = 334.6 * BIN2MAG; mag_scale_Y = 270.0 * BIN2MAG; mag_scale_Z = 340.0 * BIN2MAG;
-   ASAX = 175, ASAY = 176, ASAZ = 92;
-   Mag_AdX = 1.18, Mag_AdY = 1.19, Mag_AdX = 0.86;
-   dt = 0.01, alpha = 0.92, beta =0.94;
+   Bias_Gy_X = -83.3693; Bias_Gy_Y = 221.402; Bias_Gy_Z = -180.1906;
+      //Offset_Mag_X = 250;   Offset_Mag_Y = 85; Offset_Mag_Z = 320;
+      //mag_scale_X = 334.6 * BIN2MAG; mag_scale_Y = 270.0 * BIN2MAG; mag_scale_Z = 340.0 * BIN2MAG;
+     // ASAX = 175, ASAY = 176, ASAZ = 92;
+     // Mag_AdX = 1.18, Mag_AdY = 1.19, Mag_AdX = 0.86;
+//      dt = 0.01, alpha = 0.96, beta = 0.92;
+      dt = 0.01, alpha = 0.96, beta = 0.92;
 
-   /* correction Mag_Raw_Data */
-   Mag_X0 = ((float)(Mag_X * BIN2MAG * Mag_AdX)) - ((float)(Offset_Mag_X * BIN2MAG * Mag_AdX));
-   Mag_Y0 = ((float)(Mag_Y * BIN2MAG * Mag_AdY)) - ((float)(Offset_Mag_Y * BIN2MAG * Mag_AdY));
-   Mag_Z0 = ((float)(Mag_Z * BIN2MAG * Mag_AdZ)) - ((float)(Offset_Mag_Z * BIN2MAG * Mag_AdZ));
+      /* correction Mag_Raw_Data */
+     // Mag_X0 = ((float)(Mag_X * BIN2MAG * Mag_AdX)) - ((float)(Offset_Mag_X * BIN2MAG * Mag_AdX));
+     // Mag_Y0 = ((float)(Mag_Y * BIN2MAG * Mag_AdY)) - ((float)(Offset_Mag_Y * BIN2MAG * Mag_AdY));
+      //Mag_Z0 = ((float)(Mag_Z * BIN2MAG * Mag_AdZ)) - ((float)(Offset_Mag_Z * BIN2MAG * Mag_AdZ));
 
-   Mg_X1 = Mag_X0 / mag_scale_X;
-   Mg_Y1 = Mag_Y0 / mag_scale_Y;
-   Mg_Z1 = Mag_Z0 / mag_scale_Z;
+      //Mg_X1 = Mag_X0 / mag_scale_X;
+     /// Mg_Y1 = Mag_Y0 / mag_scale_Y;
+      //Mg_Z1 = Mag_Z0 / mag_scale_Z;
 
-   /*  Acc: g, Gyr: °/s, Mag: µT  */
-   Ac_X1 = ((float)Accel_X) / BIN2ACC;
-   Ac_Y1 = ((float)Accel_Y) / BIN2ACC;
-   Ac_Z1 = ((float)Accel_Z) / BIN2ACC;
-   Gy_X1 = ((float)Gyro_X - Bias_Gy_X) / BIN2GYR;
-   Gy_Y1 = ((float)Gyro_Y - Bias_Gy_Y) / BIN2GYR;
-   Gy_Z1 = ((float)Gyro_Z - Bias_Gy_Z) / BIN2GYR;
+      /*  Acc: g, Gyr: °/s, Mag: µT  */
+      Ac_X1 = ((float)Accel_X) / BIN2ACC;
+      Ac_Y1 = ((float)Accel_Y) / BIN2ACC;
+      Ac_Z1 = ((float)Accel_Z) / BIN2ACC;
+      Gy_X1 = ((float)Gyro_X - Bias_Gy_X) / BIN2GYR;
+      Gy_Y1 = ((float)Gyro_Y - Bias_Gy_Y) / BIN2GYR;
+      Gy_Z1 = ((float)Gyro_Z - Bias_Gy_Z) / BIN2GYR;
 
 
-   /* Acc Angle */
-   Deg_AX = atan(Ac_Y1 / sqrt(pow(Ac_X1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
-   Deg_AY = atan(-1 * Ac_X1 / sqrt(pow(Ac_Y1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
-   Deg_AZ = atan(sqrt(pow(Ac_X1, 2) + pow(Ac_Y1, 2)) / Ac_Z1) * RAD2DEG; // no meaning
+      /* Acc Angle */
+      Deg_AX = atan(Ac_Y1 / sqrt(pow(Ac_X1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
+      Deg_AY = atan(-1 * Ac_X1 / sqrt(pow(Ac_Y1, 2) + pow(Ac_Z1, 2))) * RAD2DEG;
+      Deg_AZ = atan(sqrt(pow(Ac_X1, 2) + pow(Ac_Y1, 2)) / Ac_Z1) * RAD2DEG; // no meaning
 
-   /* Gyro Angle */
-   Deg_GX = Roll + Gy_X1 * dt;
-   Deg_GY = Pitch + Gy_Y1 * dt;
-   Deg_GZ = Yaw + Gy_Z1 * dt;
+      /* Gyro Angle */
+      Deg_GX = Roll + Gy_X1 * dt;
+      Deg_GY = Pitch + Gy_Y1 * dt;
+      Deg_GZ = Yaw + Gy_Z1 * dt;
 
-   /* Roll, Pitch, Yaw Complementary filter */
-   Xm =  (-Mg_Y1 * cos(Roll * DEG2RAD) + Mg_Z1 * sin(Roll * DEG2RAD));
-   Ym =  (Mg_X1 * cos(Pitch * DEG2RAD) + Mg_Y1 * sin(Pitch * DEG2RAD) * sin(Roll * DEG2RAD) + Mg_Z1 * sin(Pitch * DEG2RAD) * cos(Roll * DEG2RAD));
-   Yaw_M = RAD2DEG * atan2(Xm, Ym);  //atan2(분자, 분모)
-   Yaw_G = Deg_GZ;
+      /* Roll, Pitch, Yaw Complementary filter */
+     // Xm =  (-Mg_Y1 * cos(Roll * DEG2RAD) + Mg_Z1 * sin(Roll * DEG2RAD));
+     // Ym =  (Mg_X1 * cos(Pitch * DEG2RAD) + Mg_Y1 * sin(Pitch * DEG2RAD) * sin(Roll * DEG2RAD) + Mg_Z1 * sin(Pitch * DEG2RAD) * cos(Roll * DEG2RAD));
+      //Yaw_M = RAD2DEG * atan2(Xm, Ym);  //atan2(분자, 분모)
+      //Yaw_G = Deg_GZ;
 
-   Roll = alpha * Deg_GX + (1 - alpha) * Deg_AX;
-   Pitch = alpha * Deg_GY + (1 - alpha) * Deg_AY;
-   Yaw = beta * Yaw_G + (1 - beta) * Yaw_M;
+      Roll = alpha * Deg_GX + (1 - alpha) * Deg_AX;
+      Pitch = alpha * Deg_GY + (1 - alpha) * Deg_AY;
+      //Yaw = beta * Yaw_G + (1 - beta) * Yaw_M;
 }
 ////motor start
 uint32_t micros() {
@@ -411,7 +411,7 @@ void delay_us(uint32_t us) {
 
 #define num1    1
 #define num2   1
-#define Time    100
+#define Time    800
 void motor_control(float roll, float pitch)
 {
     unsigned int step_Roll  = fabs( roll  / (num1 * ANGLE) ) + 0.5;
@@ -438,8 +438,7 @@ void motor_control(float roll, float pitch)
           cnt_Roll++;
        }
     }
-    // delay_us(Time);
-
+    //delay_us(Time);
 }
 
 void motor1_Angle(int dir)                                      // motor angle control
@@ -517,9 +516,9 @@ float Output = 0, Output2 = 0, Error = 0, Error2 = 0;
 float P_term = 0, I_term = 0, D_term = 0;
 float P_term2 = 0, I_term2 = 0, D_term2 = 0;
 
-#define Kp_r   0.30
+#define Kp_r   0.3
 #define Ki_r   0.00
-#define Kd_r   0.005
+#define Kd_r   0.001
 float FUNC_PID_Roll()
 {
    Error = taget_Roll - Roll;  Error_Sum += Error * dt;
@@ -535,12 +534,12 @@ float FUNC_PID_Roll()
 }
 
 
-#define Kp_p     0.2   //0.30
+#define Kp_p     0.2
 #define Ki_p   0.00
-#define Kd_p    0.02  //0.045
-float FUNC_PID_Pitch() //negative feedback system
+#define Kd_p    0.025
+float FUNC_PID_Pitch()
 {
-   Error2 = -(taget_Pitch - Pitch);  Error_Sum2 += Error2 * dt;
+   Error2 = -taget_Pitch + Pitch;  Error_Sum2 += Error2 * dt;
    //Error2 = - Pitch;  Error_Sum2 += Error2 * dt;
 
    P_term2 = Kp_p * Error2;
@@ -556,14 +555,30 @@ float FUNC_PID_Pitch() //negative feedback system
 ////motor end
 //ISP_func
 
-
+unsigned int mycnt=0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) ///new
 {
    if (htim->Instance == TIM4)
    {
+//      flag = 0;
+      //HAL_GPIO_WritePin(GPIOB,GPIO_PIN_14, GPIO_PIN_SET);
+      //read_AK8963_data();
       read_MPU9250_data();
-      read_AK8963_data();
       Sensor_Calculate();
+      PID_Roll = FUNC_PID_Roll();
+      PID_Pitch = FUNC_PID_Pitch();
+//      PID_Pitch = 5;
+
+      mycnt++;
+      if (mycnt >= 2) {
+         mycnt = 0;
+         motor_control(PID_Roll, PID_Pitch); //PID_Roll, PID_Pitch
+         //motor_control(0, PID_Pitch); //PID_Roll, PID_Pitch
+      }
+
+      //motor_control(PID_Roll, PID_Pitch); //PID_Roll, PID_Pitch
+      //printf("%5.2f\r\n",PID_Roll);
+      //HAL_GPIO_WritePin(GPIOB,GPIO_PIN_14, GPIO_PIN_RESET);
       flag += 1;
    }
 }
@@ -632,20 +647,29 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-     /* Print for Roll Pitch Yaw */
-     //printf("Roll: %5.2f   /  Pitch: %5.2f   /  Yaw: %5.2f \r\n", Roll, Pitch, Yaw);
-     printf("%5.2f / %5.2f / %5.2f \r\n", Roll, Pitch, Yaw); //for HyperTerminal
-     //printf("YPR,%5.2f,%5.2f,%5.2f\r\n", Yaw, Pitch, Roll); //for Processing
-     //printf("------------------------------------------------------------\r\n");
-
-     if (flag > 50)
+     if (flag > 100)
      {
-        /* Print for Roll Pitch Yaw */
-        //printf("Roll: %5.2f   /  Pitch: %5.2f   /  Yaw: %5.2f \r\n", Roll, Pitch, Yaw);
-        //printf("%5.2f/%5.2f/%5.2f \r\n", Roll, Pitch, Yaw); //for HyperTerminal
-        //printf("YPR,%5.2f,%5.2f,%5.2f\r\n", Yaw, Pitch, Roll); //for Processing
-        //printf("------------------------------------------------------------\r\n");
         flag = 0;
+        //if (abs(PID_Roll)<5 && abs(PID_Pitch)<5) motor_control(0,0);
+        //else
+ //       motor_control(PID_Roll, PID_Pitch); //PID_Roll, PID_Pitch
+        printf("%5.2f %5.2f\r\n", Roll, Pitch);
+        /*
+        motor_control(0, 0);
+        htim2.Instance -> CCR1 = Duty_Rate[chan2_1];
+        htim2.Instance -> CCR2 = Duty_Rate[chan2_2];
+        htim2.Instance -> CCR3 = Duty_Rate[chan2_3];
+
+
+        chan2_1 = chan2_1 + 1;
+        chan2_2 = chan2_2 + 1;
+        chan2_3 = chan2_3 + 1;
+
+        if(chan2_1 >= 360 ) {chan2_1 = 0;}
+        if(chan2_2 >= 360 ) {chan2_2 = 0;}
+        if(chan2_3 >= 360 ) {chan2_3 = 0;}
+        HAL_Delay(1);
+        */
      }
 
 
@@ -656,6 +680,7 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
+
 /**
   * @brief System Clock Configuration
   * @retval None
